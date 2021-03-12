@@ -16,13 +16,17 @@ def log(string):
 
 MSG_SIZE = 1500
 TIMEOUT = 30
+SNS = {}
+lseqsize = 0
+lseqn = 0
+
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
-UDP_PORT = 0
+UDP_PORT = int(sys.argv[1])
 
 # Set up the socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.settimeout(TIMEOUT)
 
@@ -30,9 +34,17 @@ sock.settimeout(TIMEOUT)
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
+#ACKNOWLEDGE
+
+
 # Now listen for packets
 while True:
+
+  log('IN While LOOp')
+
+  #MSG_SIZE = 250
   result = sock.recvfrom(MSG_SIZE)
+  log('RESULT: ' + str(result))
 
   # If nothing is ready, we hit the timeout
   if result:
@@ -49,8 +61,29 @@ while True:
       # If there is data, we accept it and print it out
       if (decoded['data']):
         # If we receive data, we assume it's in-order
+
+
+        if(decoded['sequence'] in SNS):
+          #duplicate
+          log("[duplicate]" + str(decoded['sequence']))
+          pass
+        else:
+          SNS[decoded['sequence']] = decoded
+
+
+        if(decoded['sequence'] != lseqsize + lseqn):
+          #out of order
+          msg = json.dumps({"ack": lseqn + lseqsize})
+          log("ABOUT TO SEND " + msg)
+          if sock.sendto(msg, addr) < len(msg):
+            log("[error] undable to fully send packet")
+          pass
+
+
+
+
         # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
+        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
         sys.stdout.write(decoded['data'])
 
       # Send back an ack to the sender
@@ -58,6 +91,11 @@ while True:
       log("ABOUT TO SEND " + msg)
       if sock.sendto(msg, addr) < len(msg):
         log("[error] unable to fully send packet")
+
+
+      lseqsize = len(decoded)
+      lseqn = decoded['sequence']
+
 
     except (ValueError, KeyError, TypeError) as e:
       log("[recv corrupt packet]")
