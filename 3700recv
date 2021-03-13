@@ -20,6 +20,8 @@ SNS = {}
 lseqsize = 0
 lseqn = 0
 
+RTT = 0
+
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -37,6 +39,8 @@ log("[bound] " + str(UDP_PORT))
 #ACKNOWLEDGE
 
 
+
+
 # Now listen for packets
 while True:
 
@@ -45,12 +49,12 @@ while True:
   #MSG_SIZE = 250
   result = sock.recvfrom(MSG_SIZE)
   log('RESULT: ' + str(result))
-
   # If nothing is ready, we hit the timeout
   if result:
     (data, addr) = result
 
-    try:
+
+       try:
       decoded = json.loads(data)
 
       # If the EOF flag is set, exit
@@ -66,18 +70,17 @@ while True:
         if(decoded['sequence'] in SNS):
           #duplicate
           log("[duplicate]" + str(decoded['sequence']))
-          pass
+          continue
         else:
           SNS[decoded['sequence']] = decoded
 
 
         if(decoded['sequence'] != lseqsize + lseqn):
           #out of order
-          msg = json.dumps({"ack": lseqn + lseqsize})
+          msg = json.dumps({"time": time.time(), "ack": lseqn + lseqsize})
           log("ABOUT TO SEND " + msg)
           if sock.sendto(msg, addr) < len(msg):
             log("[error] undable to fully send packet")
-          pass
 
 
 
@@ -87,7 +90,7 @@ while True:
         sys.stdout.write(decoded['data'])
 
       # Send back an ack to the sender
-      msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
+      msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
       log("ABOUT TO SEND " + msg)
       if sock.sendto(msg, addr) < len(msg):
         log("[error] unable to fully send packet")
