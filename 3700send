@@ -40,7 +40,7 @@ def send_next_packet():
   data = sys.stdin.read(DATA_SIZE)
 
 
-   if (len(data) > 0):
+  if (len(data) > 0):
     msg = json.dumps({"time": time.time(), "sequence": SEQUENCE, "ack": False, "eof": False, "data": data})
     SEQUENCE += len(data)
 
@@ -63,20 +63,21 @@ def timestamp_rtt(data):
 
 
 # Send first packet
-for i in range(0,9):
-  try:
-    send_next_packet()
-  except:
-    continue
+send_next_packet()
+#for i in range(0,9):
+#  try:
+#    send_next_packet()
+#  except:
+#    continue
 
 while True:
   log("ABOUT TO SLEEP")
-  rd, wd, ed = select.select([sock], [], [], 2*RTT)
+  rd, wd, ed = select.select([sock], [], [], 3*RTT)
   if rd:
     result = sock.recvfrom(MSG_SIZE)
   else:
     result = 0
-  log("RESULT: " + str(result))
+  log("SEND: RESULT: " + str(result))
   if result:
     (data, addr) = result
     try:
@@ -91,15 +92,29 @@ while True:
         log('CURRENT RTT :' + str(RTT))
         ALL_PACKETS[SEQUENCE]['ack'] = True
         log('SEQENCE ' + str(SEQUENCE) + ' ack changed in table to TRUE')
-
-             # Try to send next packet; break if no more data
+        # Try to send next packet; break if no more data
         if (not send_next_packet()):
           break
+      else:
+        msg = json.dumps(ALL_PACKETS[decoded['ack']])
+        log("SENDER: ABOUT TO SEND " + msg)
+        if sock.sendto(msg, addr) < len(msg):
+          log("[error] undable to fully send packet")
+
+
     except (ValueError, KeyError, TypeError):
       log("[recv corrupt packet]")
   else:
-    log("[error] timeout")
-    sys.exit(-1)
+    log("SEND: [error] timeout")
+    msg = json.dumps(ALL_PACKETS[SEQUENCE])
+    log("SEND: ABOUT TO RESEND " + msg)
+    if sock.sendto(msg, dest) < len(msg):
+      log("SEND: [error] unable to fully send packet")
+
+
+
 
 sock.sendto(json.dumps({"time": datetime.datetime.now().strftime("%H:%M:%S.%f"), "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+
 sys.exit(0)
+                                                                                                 119,7         Bot
