@@ -20,7 +20,7 @@ SNS = {}
 lseqsize = 0
 lseqn = 0
 
-RTT = 0
+RTT = 0.9
 
 
 # Bind to localhost and an ephemeral port
@@ -37,26 +37,30 @@ UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
 #ACKNOWLEDGE
-
+laddr = None
 
 
 
 # Now listen for packets
 while True:
 
+
   log('IN While LOOp')
 
   #MSG_SIZE = 250
-  result = sock.recvfrom(MSG_SIZE)
-  log('RESULT: ' + str(result))
   # If nothing is ready, we hit the timeout
+
+  rd, wd, ed = select.select([sock], [], [], 3*RTT)
+  if rd:
+    result = sock.recvfrom(MSG_SIZE)
+  else:
+    result = 0
+  log('RECV: RESULT: ' + str(result))
   if result:
     (data, addr) = result
-
-
-       try:
+    try:
       decoded = json.loads(data)
-
+      log("RECIEVED: " + str(decoded))
       # If the EOF flag is set, exit
       if (decoded['eof']):
         log("[completed]")
@@ -74,35 +78,41 @@ while True:
         else:
           SNS[decoded['sequence']] = decoded
 
-
+        #Not same as last sequence
         if(decoded['sequence'] != lseqsize + lseqn):
-          #out of order
-          msg = json.dumps({"time": time.time(), "ack": lseqn + lseqsize})
-          log("ABOUT TO SEND " + msg)
-          if sock.sendto(msg, addr) < len(msg):
-            log("[error] undable to fully send packet")
+           #out of order
+           msg = json.dumps({"time": time.time(), "ack": lseqn + lseqsize})
+           log("RECV: ABOUT TO SEND " + msg)
+           if sock.sendto(msg, addr) < len(msg):
+             log("[error] undable to fully send packet")
 
 
 
-
-        # You will need to do much more here
+          # You will need to do much more here
         log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
         sys.stdout.write(decoded['data'])
 
-      # Send back an ack to the sender
-      msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
-      log("ABOUT TO SEND " + msg)
-      if sock.sendto(msg, addr) < len(msg):
-        log("[error] unable to fully send packet")
-
-
-      lseqsize = len(decoded)
-      lseqn = decoded['sequence']
-
+          # Send back an ack to the sender
+        msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
+        log("RECV: ABOUT TO SEND " + msg)
+        if sock.sendto(msg, addr) < len(msg):
+          log("[error] unable to fully send packet")
+        lseqsize = len(decoded)
+        log('LSEQSIZE: ' + str(len(decoded)))
+        lseqn = decoded['sequence']
+        log('LSEQN: ' + str(decoded['sequence']))
+      laddr = addr
 
     except (ValueError, KeyError, TypeError) as e:
       log("[recv corrupt packet]")
       raise e
   else:
-    log("[error] timeout")
-    sys.exit(-1)
+    if laddr:
+      log("RECV: [error] timeout")
+      #sys.exit(-1)
+      msg = json.dumps({"time": time.time(), "ack": lseqn})
+      log("RECV: ABOUT TO SEND " + msg)
+      if sock.sendto(msg, laddr) < len(msg):
+        log("[error] undable to fully send packet")
+   # else:
+   #   break
