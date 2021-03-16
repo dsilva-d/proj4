@@ -17,6 +17,7 @@ def log(string):
 MSG_SIZE = 1500
 TIMEOUT = 30
 SNS = {}
+DDS = {}
 lseqsize = 0
 lseqn = 0
 
@@ -44,7 +45,6 @@ laddr = None
 # Now listen for packets
 while True:
 
-
   log('IN While LOOp')
 
   #MSG_SIZE = 250
@@ -60,7 +60,7 @@ while True:
     (data, addr) = result
     try:
       decoded = json.loads(data)
-      log("RECIEVED: " + str(decoded))
+      #log("RECIEVED: " + str(decoded))
       # If the EOF flag is set, exit
       if (decoded['eof']):
         log("[completed]")
@@ -74,32 +74,45 @@ while True:
         if(decoded['sequence'] in SNS):
           #duplicate
           log("[duplicate]" + str(decoded['sequence']))
+          if(decoded['sequence'] in DDS):
+            msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
+            log("[duplicate] RECIEVED MULTIPLE DUPLICATES - resending ack: " + str(decoded['sequence'] + len(decoded['data'])))
+            if sock.sendto(msg, addr) < len(msg):
+              log("[error] unable to fully send packet, duplicate found before")
+
+          else:
+            DDS[decoded['sequence']] = decoded
+
           continue
         else:
           SNS[decoded['sequence']] = decoded
 
         #Not same as last sequence
-        if(decoded['sequence'] != lseqsize + lseqn):
+        if(decoded['sequence'] != lseqn):
            #out of order
-           msg = json.dumps({"time": time.time(), "ack": lseqn + lseqsize})
+           msg = json.dumps({"time": time.time(), "ack": lseqn})
+           if(SNS[len(SNS)] == 0):
+             msg = json.dumps({"time": time.time(), "ack": decoded['ack']})
            log("RECV: ABOUT TO SEND " + msg)
            if sock.sendto(msg, addr) < len(msg):
              log("[error] undable to fully send packet")
 
-
-
+        else:
           # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
-        sys.stdout.write(decoded['data'])
+          log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
+          sys.stdout.write(decoded['data'])
+
 
           # Send back an ack to the sender
-        msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
-        log("RECV: ABOUT TO SEND " + msg)
-        if sock.sendto(msg, addr) < len(msg):
-          log("[error] unable to fully send packet")
-        lseqsize = len(decoded)
-        log('LSEQSIZE: ' + str(len(decoded)))
-        lseqn = decoded['sequence']
+          msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
+          log("RECV: ABOUT TO SEND " + msg)
+          if sock.sendto(msg, addr) < len(msg):
+            log("[error] unable to fully send packet")
+
+
+        lseqsize = len(decoded['data'])
+        log('LSEQSIZE: ' + str(len(decoded['data'])))
+        lseqn = decoded['sequence'] + len(decoded['data'])
         log('LSEQN: ' + str(decoded['sequence']))
       laddr = addr
 
@@ -114,5 +127,3 @@ while True:
       log("RECV: ABOUT TO SEND " + msg)
       if sock.sendto(msg, laddr) < len(msg):
         log("[error] undable to fully send packet")
-   # else:
-   #   break
