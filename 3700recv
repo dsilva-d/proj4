@@ -53,7 +53,7 @@ while True:
   rd, wd, ed = select.select([sock], [], [], 3*RTT)
   if rd:
     result = sock.recvfrom(MSG_SIZE)
-  else:
+   else:
     result = 0
   log('RECV: RESULT: ' + str(result))
   if result:
@@ -79,9 +79,7 @@ while True:
             log("[duplicate] RECIEVED MULTIPLE DUPLICATES - resending ack: " + str(decoded['sequence'] + len(decoded['data'])))
             if sock.sendto(msg, addr) < len(msg):
               log("[error] unable to fully send packet, duplicate found before")
-
-          else:
-            DDS[decoded['sequence']] = decoded
+            del DDS[decoded['sequence']] #remove to prevent triple duplicates acks
 
           continue
         else:
@@ -91,11 +89,12 @@ while True:
         if(decoded['sequence'] != lseqn):
            #out of order
            msg = json.dumps({"time": time.time(), "ack": lseqn})
-           if(SNS[len(SNS)] == 0):
-             msg = json.dumps({"time": time.time(), "ack": decoded['ack']})
+           #if(SNS[len(SNS)] == 0):
+           #  msg = json.dumps({"time": time.time(), "ack": decoded['ack']}) 
            log("RECV: ABOUT TO SEND " + msg)
            if sock.sendto(msg, addr) < len(msg):
              log("[error] undable to fully send packet")
+
 
         else:
           # You will need to do much more here
@@ -108,17 +107,22 @@ while True:
           log("RECV: ABOUT TO SEND " + msg)
           if sock.sendto(msg, addr) < len(msg):
             log("[error] unable to fully send packet")
+          
 
-
-        lseqsize = len(decoded['data'])
-        log('LSEQSIZE: ' + str(len(decoded['data'])))
-        lseqn = decoded['sequence'] + len(decoded['data'])
-        log('LSEQN: ' + str(decoded['sequence']))
-      laddr = addr
-
+          lseqsize = len(decoded['data'])
+          log('LSEQSIZE: ' + str(len(decoded['data'])))
+          lseqn = decoded['sequence'] + len(decoded['data'])
+          log('LSEQN: ' + str(decoded['sequence']))
+          DDS[decoded['sequence']] = decoded
+          laddr = addr
+      # If the EOF flag is set, exit
+      elif (decoded['eof']):
+        log("[completed]")
+        sys.exit(0)
     except (ValueError, KeyError, TypeError) as e:
       log("[recv corrupt packet]")
       raise e
+
   else:
     if laddr:
       log("RECV: [error] timeout")
