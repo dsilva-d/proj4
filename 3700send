@@ -52,8 +52,7 @@ def send_next_packet():
     msg = json.dumps({"time": time.time(), "sequence": CSEQUENCE, "ack": False, "eof": False, "data": data})
     CSEQUENCE += len(data)
     SEQUENCES.append(CSEQUENCE)
-
-   if sock.sendto(msg, dest) < len(msg):
+    if sock.sendto(msg, dest) < len(msg):
       log("[error] unable to fully send packet")
     else:
       ALL_PACKETS[CSEQUENCE] = json.loads(msg)
@@ -66,7 +65,9 @@ def send_next_packet():
 #ADDED
 def timestamp_rtt(data):
   global RTT
-  rtt = data["time"] - ALL_PACKETS[CSEQUENCE]["time"]
+  #if len(ALL_PACKETS) > 2: 
+  #rtt = data["time"] - ALL_PACKETS[CSEQUENCE]["time"] 
+  rtt = ALL_PACKETS[CSEQUENCE]["time"] - ALL_PACKETS[CSEQUENCE - DATA_SIZE]["time"]
   log('rtt found: ' + str(rtt))
   RTT = ((len(ALL_PACKETS) - 1) * RTT + 1 * (rtt)) / len(ALL_PACKETS)
 
@@ -85,6 +86,16 @@ def advsend():
 advsend()
 
 
+def sendunacks():
+  global ALL_PACKETS
+  for i in SEQUENCES:
+    msg = json.dumps(ALL_PACKETS[i])
+    log("SEND: SENDING PACKET: " + str(i))
+    if sock.sendto(msg, addr) < len(msg):
+      log('PACKET DID NOT SEND')
+
+
+
 while True:
   log("ABOUT TO SLEEP")
   rd, wd, ed = select.select([sock], [], [], 3*RTT)
@@ -96,11 +107,25 @@ while True:
   if result:
     (data, addr) = result
     try:
-      decoded = json.loads(data)
+    decoded = json.loads(data)
+
+      if decoded['ack'] != SEQUENCES[0]:
+        ind = SEQUENCES[0] #previously send packet/ack has been dropped
+        if decoded['ack'] < SEQUENCES[0]:
+          if decoded['ack'] == 0:
+            ind = DATA_SIZE
+          else:
+            ind = decoded['ack'] + len(ALL_PACKETS[decoded['ack']]['data']) #packet directly after current
+          sendunacks()
+        else:
+          msg = json.dumps(ALL_PACKETS[ind])
+          log("SENDER: ABOUT TO SEND " + msg)
+          if sock.sendto(msg, addr) < len(msg):
+            log("[error] undable to fully send packet")
 
       # If there is an ack, send next packet
       #if decoded['ack'] == CSEQUENCE:
-      if (decoded['ack'] == SEQUENCES[0]):
+      if decoded['ack'] in SEQUENCES:
         tSEQ = SEQUENCES[0]
         log("[recv ack] " + str(tSEQ))
         RECVD = True
@@ -108,23 +133,25 @@ while True:
         timestamp_rtt(decoded)
         log('CURRENT RTT :' + str(RTT))
         ALL_PACKETS[tSEQ]['ack'] = True
-        log('SEQENCE ' + str(CSEQUENCE) + ' ack changed in table to TRUE')
+        log('SEQENCE ' + str(tSEQ) + ' ack changed in table to TRUE')
         log('CWND: ' + str(cwnd))
         cwnd += 1
         SEQUENCES.pop(0)
         # Try to send next packet; break if no more data
         if (not send_next_packet()):
-          break
-      else:
+          if len(SEQUENCES) == 0:
+            break
+      #else:
         ## wrong acknowledgement
-        if decoded['ack'] > SEQUENCES[0]:
-          ind = SEQUENCES[0] #previously send packet/ack has been dropped
-        else:
-          ind = decoded['ack'] + len(ALL_PACKETS[decoded['ack']]['data']) #packet directly after current 
-        msg = json.dumps(ALL_PACKETS[ind])
-        log("SENDER: ABOUT TO SEND " + msg)
-        if sock.sendto(msg, addr) < len(msg):
-          log("[error] undable to fully send packet")
+
+        #if decoded['ack'] > SEQUENCES[0]:
+        #  ind = SEQUENCES[0] #previously send packet/ack has been dropped
+        #else:
+        #  ind = decoded['ack'] + len(ALL_PACKETS[decoded['ack']]['data']) #packet directly after current 
+        #msg = json.dumps(ALL_PACKETS[ind])
+        #log("SENDER: ABOUT TO SEND " + msg)
+        #if sock.sendto(msg, addr) < len(msg):
+        #  log("[error] undable to fully send packet")
 
 
     except (ValueError, KeyError, TypeError) as e:
