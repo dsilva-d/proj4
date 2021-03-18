@@ -53,7 +53,7 @@ while True:
   rd, wd, ed = select.select([sock], [], [], 3*RTT)
   if rd:
     result = sock.recvfrom(MSG_SIZE)
-   else:
+  else:
     result = 0
   log('RECV: RESULT: ' + str(result))
   if result:
@@ -80,10 +80,11 @@ while True:
             if sock.sendto(msg, addr) < len(msg):
               log("[error] unable to fully send packet, duplicate found before")
             del DDS[decoded['sequence']] #remove to prevent triple duplicates acks
-
+          else:
+            DDS[decoded['sequence']] = decoded
           continue
-        else:
-          SNS[decoded['sequence']] = decoded
+
+
 
         #Not same as last sequence
         if(decoded['sequence'] != lseqn):
@@ -102,18 +103,18 @@ while True:
           sys.stdout.write(decoded['data'])
 
 
-          # Send back an ack to the sender
+              # Send back an ack to the sender
           msg = json.dumps({"time": time.time(), "ack": decoded['sequence'] + len(decoded['data'])})
           log("RECV: ABOUT TO SEND " + msg)
           if sock.sendto(msg, addr) < len(msg):
             log("[error] unable to fully send packet")
-          
+
 
           lseqsize = len(decoded['data'])
           log('LSEQSIZE: ' + str(len(decoded['data'])))
           lseqn = decoded['sequence'] + len(decoded['data'])
           log('LSEQN: ' + str(decoded['sequence']))
-          DDS[decoded['sequence']] = decoded
+          SNS[decoded['sequence']] = decoded
           laddr = addr
       # If the EOF flag is set, exit
       elif (decoded['eof']):
